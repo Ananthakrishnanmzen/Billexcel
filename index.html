@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill to Excel Converter</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tesseract.js Version 4 (Stable for this logic) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    
+    <!-- SheetJS for Excel (.xlsx) Generation -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800">
+
+    <div class="max-w-3xl mx-auto py-10 px-4">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-blue-600 mb-2">🧾 Bill to Excel Converter</h1>
+            <p class="text-gray-600">Upload a photo of a bill and extract it into an Excel sheet. Runs entirely in your browser.</p>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <label class="block text-sm font-medium text-gray-700 mb-2" for="billImage">Upload Bill Image (.jpg, .png)</label>
+            <input type="file" id="billImage" accept="image/*" class="block w-full border border-gray-300 rounded-md p-2 mb-4">
+            
+            <img id="imagePreview" class="hidden w-full max-h-96 object-contain border rounded mb-4" alt="Bill Preview">
+            
+            <button id="processBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition-colors hidden text-lg">
+                Extract Data to Excel
+            </button>
+        </div>
+
+        <!-- Progress Indicator -->
+        <div id="progressContainer" class="hidden bg-white p-6 rounded-lg shadow-md mb-8 text-center">
+            <p id="progressText" class="text-lg font-semibold text-blue-600 mb-2">Initializing AI Engine (First run takes ~20 secs)...</p>
+            <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
+                <div id="progressBar" class="bg-blue-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <p class="text-sm text-gray-500">Please keep this tab open. Processing heavily depends on your device speed.</p>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsContainer" class="hidden bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Extracted Items</h2>
+            <div class="overflow-x-auto mb-6">
+                <table class="min-w-full bg-white border border-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">Item Description</th>
+                            <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- Data will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <button id="downloadBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded transition-colors text-lg">
+                ⬇️ Download Excel (.xlsx)
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('billImage');
+        const imagePreview = document.getElementById('imagePreview');
+        const processBtn = document.getElementById('processBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressText = document.getElementById('progressText');
+        const progressBar = document.getElementById('progressBar');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const tableBody = document.getElementById('tableBody');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let extractedData = [];
+
+        // Handle Image Upload & Preview
+        fileInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.classList.remove('hidden');
+                    processBtn.classList.remove('hidden');
+                    resultsContainer.classList.add('hidden');
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Process Image with Tesseract.js (OCR)
+        processBtn.addEventListener('click', async function() {
+            if (!fileInput.files[0]) return;
+
+            processBtn.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            progressText.innerText = "Initializing AI Engine...";
+            
+            try {
+                // Tesseract v4 Initialization
+                const worker = await Tesseract.createWorker({
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const progress = Math.round(m.progress * 100);
+                            progressBar.style.width = `${progress}%`;
+                            progressText.innerText = `Extracting Text: ${progress}%`;
+                        } else {
+                            progressText.innerText = m.status;
+                        }
+                    }
+                });
+                
+                await worker.loadLanguage('eng');
+                await worker.initialize('eng');
+                
+                // Recognize text
+                const { data: { text } } = await worker.recognize(fileInput.files[0]);
+                console.log("Raw OCR Text:\n", text);
+                
+                await worker.terminate();
+
+                parseTextToData(text);
+
+            } catch (error) {
+                console.error(error);
+                alert("An error occurred while reading the image. Check the console for details.");
+                progressContainer.classList.add('hidden');
+                processBtn.classList.remove('hidden');
+            }
+        });
+
+        // Parse the raw text to find Items and Prices
+        function parseTextToData(text) {
+            extractedData = []; 
+            const lines = text.split('\n');
+            
+            // Highly permissive regex to catch variations of prices at the end of lines
+            const priceRegex = /(.*?)(?:rs\.?|₹|\$)?\s*(\d+[.,]\d{2})\s*$/i;
+
+            lines.forEach(line => {
+                const match = line.match(priceRegex);
+                if (match && match[1].trim() !== '') {
+                    let itemName = match[1].trim().replace(/[^a-zA-Z0-9\s-]/g, '');
+                    let itemPrice = parseFloat(match[2].replace(',', '.'));
+                    
+                    if(itemName.length > 2 && !isNaN(itemPrice)) { 
+                        extractedData.push({
+                            "Item Description": itemName,
+                            "Price": itemPrice
+                        });
+                    }
+                }
+            });
+
+            if (extractedData.length === 0) {
+                alert("Could not detect items and prices. Ensure the image is clear and the bill format separates items and prices distinctly.");
+                progressContainer.classList.add('hidden');
+                processBtn.classList.remove('hidden');
+                return;
+            }
+
+            renderTable();
+        }
+
+        // Show data in HTML Table
+        function renderTable() {
+            tableBody.innerHTML = '';
+            extractedData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="py-3 px-4 border-b text-gray-700">${row["Item Description"]}</td>
+                    <td class="py-3 px-4 border-b text-gray-700 font-bold">${row["Price"].toFixed(2)}</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+
+            progressContainer.classList.add('hidden');
+            resultsContainer.classList.remove('hidden');
+        }
+
+        // Generate and Download Excel File
+        downloadBtn.addEventListener('click', function() {
+            const worksheet = XLSX.utils.json_to_sheet(extractedData);
+            const workbook = XLSX.utils.book_new();
+            
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Bill Details");
+
+            worksheet['!cols'] = [
+                { wch: 35 }, 
+                { wch: 15 }  
+            ];
+
+            XLSX.writeFile(workbook, "Extracted_Bill.xlsx");
+        });
+    </script>
+</body>
+</html>
+
