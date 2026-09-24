@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ledgerlens — Bill to Return</title>
+<title>Taxovate — Bill to Return</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
@@ -148,7 +148,9 @@
 
   <header class="top">
     <div class="brand">
-      <h1>Taxovate</h1>
+      <a href="index.html" style="text-decoration:none; color:var(--ink); display:flex; align-items:baseline; gap:10px;">
+        <h1>Taxovate</h1>
+      </a>
       <span class="tag">From a photographed bill to a filing-ready return</span>
     </div>
     <div class="meta">Runs entirely in this browser · nothing is uploaded to a server</div>
@@ -277,8 +279,8 @@
 
   // ---------- state ----------
   const state = {
-    invoices: [],      // {id, type, gstin, party, invoiceNo, date, hsn, taxable, cgst, sgst, igst, total, fileName}
-    gstr2b: [],        // {gstin, invoiceNo, taxable, taxAmount, total}
+    invoices: [],      
+    gstr2b: [],        
     reconciled: false,
     recon: []
   };
@@ -320,7 +322,7 @@
     m = flat.match(/(?:invoice\s*date|dated)\s*[:\-]?\s*(\d{1,2}[-\/][A-Za-z0-9]{2,9}[-\/]\d{2,4})/i);
     if(m) date = m[1];
 
-    // party name — line following "M/S" or "Bill to"
+    // party name 
     let party = '';
     for(let i=0;i<lines.length;i++){
       if(/^m\/s\b/i.test(lines[i])){ party = lines[i].replace(/^m\/s\s*/i,''); break; }
@@ -332,7 +334,7 @@
     m = flat.match(/hsn(?:\s*\/\s*sac)?\s*(?:code)?\s*[:\-]?\s*(\d{4,8})/i);
     if(m) hsn = m[1];
 
-    // tax heads: CGST / SGST / IGST — capture rate% and amount near the label
+    // tax heads
     function taxHead(label){
       const re = new RegExp(label+"[^\\d]{0,15}(\\d{1,2}(?:\\.\\d+)?)\\s*%[^\\d\\-]{0,30}([\\d,]+\\.?\\d*)", 'i');
       const mm = flat.match(re);
@@ -347,7 +349,7 @@
     m = flat.match(/taxable\s*(?:value|amount)\s*[:\-]?\s*([\d,]+\.?\d*)/i);
     if(m) taxable = num(m[1]);
 
-    // total — prefer explicit "total amount after tax" / "grand total", else the largest currency-like number
+    // total
     let total = 0;
     m = flat.match(/total\s*amount\s*after\s*tax\s*[:\-]?\s*₹?\s*([\d,]+\.?\d*)/i) ||
         flat.match(/grand\s*total\s*[:\-]?\s*₹?\s*([\d,]+\.?\d*)/i);
